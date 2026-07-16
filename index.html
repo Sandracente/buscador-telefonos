@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Buscador de Telefonos</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --accent: #38bdf8;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px 16px 60px;
+  }
+  .wrap { max-width: 900px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; text-align: center; }
+  .subtitle { text-align: center; color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+  .search-box { position: sticky; top: 0; background: var(--bg); padding: 8px 0 16px; z-index: 10; }
+  .search-row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .search-input-wrap { position: relative; flex: 1; min-width: 150px; }
+  .search-input-wrap input[type="text"] {
+    width: 100%; padding: 14px 40px 14px 16px; font-size: 1.05rem; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text); outline: none;
+  }
+  .search-input-wrap input[type="text"]:focus { border-color: var(--accent); }
+  .clear-btn {
+    position: absolute; right: 8px; top: 50%; transform: translateY(-50%);
+    width: 26px; height: 26px; border: none; border-radius: 50%;
+    background: var(--border); color: var(--text); font-size: 0.95rem;
+    cursor: pointer; display: none; align-items: center; justify-content: center; line-height: 1;
+  }
+  .clear-btn:hover { background: #475569; }
+  .clear-btn.visible { display: flex; }
+  select#delegacionFilter {
+    padding: 14px 12px; font-size: 0.95rem; border-radius: 12px;
+    border: 1px solid var(--border); background: var(--card); color: var(--text); outline: none;
+    max-width: 100%; flex: 1; min-width: 150px;
+  }
+  select#delegacionFilter:focus { border-color: var(--accent); }
+  input[type="text"]:focus { border-color: var(--accent); }
+  input[type="text"]:disabled { opacity: 0.5; }
+  .count { color: var(--muted); font-size: 0.85rem; margin: 6px 4px 0; display: flex; justify-content: space-between; }
+  .refresh-btn {
+    background: none; border: none; color: var(--accent); cursor: pointer;
+    font-size: 0.82rem; padding: 0; text-decoration: underline;
+  }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 14px 16px; margin-bottom: 10px;
+    display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 12px;
+  }
+  .info { flex: 1; min-width: 180px; }
+  .name { font-weight: 600; font-size: 1.02rem; margin-bottom: 8px; }
+  .field-row { display: flex; flex-wrap: wrap; gap: 8px; }
+  .field {
+    display: flex; flex-direction: row; align-items: center; gap: 6px;
+    background: rgba(255,255,255,0.03); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px;
+  }
+  .field-label {
+    font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.03em;
+    font-weight: 700; white-space: nowrap;
+  }
+  .field-value { font-size: 0.9rem; color: var(--text); white-space: nowrap; }
+  .field.delegacion { border-color: #3b5a7a; background: rgba(56,189,248,0.06); }
+  .field.delegacion .field-label { color: #38bdf8; }
+  .field.ext-deleg { border-color: #6b5aad; background: rgba(167,139,250,0.08); }
+  .field.ext-deleg .field-label { color: #a78bfa; }
+  .phones {
+    display: flex; flex-direction: column; gap: 2px; align-items: flex-end; min-width: 110px;
+  }
+  .phone-value { color: var(--accent); font-weight: 700; font-size: 1.05rem; white-space: nowrap; }
+  .ext-value {
+    font-size: 0.92rem; color: #fb923c; font-weight: 700;
+  }
+  .empty, .status { text-align: center; color: var(--muted); padding: 40px 0; }
+  .status.error { color: #f87171; }
+  mark { background: var(--accent); color: #0f172a; border-radius: 3px; padding: 0 2px; }
+  .spinner {
+    border: 3px solid var(--border); border-top: 3px solid var(--accent);
+    border-radius: 50%; width: 28px; height: 28px; animation: spin 0.8s linear infinite;
+    margin: 0 auto 12px;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .login-screen {
+    min-height: 70vh; display: flex; align-items: center; justify-content: center;
+  }
+  .login-box {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 32px 28px; max-width: 340px; width: 100%; text-align: center;
+  }
+  .login-box .lock { font-size: 2rem; margin-bottom: 8px; }
+  .login-box h2 { margin: 0 0 4px; font-size: 1.15rem; }
+  .login-box p { color: var(--muted); font-size: 0.85rem; margin: 0 0 18px; }
+  .login-box input[type="password"] {
+    width: 100%; padding: 12px 14px; font-size: 1rem; border-radius: 10px;
+    border: 1px solid var(--border); background: #0f172a; color: var(--text);
+    outline: none; margin-bottom: 10px; text-align: center;
+  }
+  .login-box input[type="password"]:focus { border-color: var(--accent); }
+  .login-box button {
+    width: 100%; padding: 12px; font-size: 0.95rem; font-weight: 600;
+    border: none; border-radius: 10px; background: var(--accent); color: #0f172a;
+    cursor: pointer;
+  }
+  .login-box button:hover { opacity: 0.9; }
+  .login-error {
+    color: #f87171; font-size: 0.82rem; margin-top: 10px; min-height: 1.2em;
+  }
+  .app-hidden { display: none; }
+  .logout-btn {
+    background: none; border: none; color: var(--muted); cursor: pointer;
+    font-size: 0.78rem; text-decoration: underline; padding: 0;
+  }
+</style>
+</head>
+<body>
+
+<div id="loginScreen" class="login-screen">
+  <div class="login-box">
+    <div class="lock">🔒</div>
+    <h2>Acceso restringido</h2>
+    <p>Introduce la contraseña para ver el listado</p>
+    <input type="password" id="passwordInput" placeholder="Contraseña" autocomplete="off">
+    <button id="loginBtn">Entrar</button>
+    <div class="login-error" id="loginError"></div>
+  </div>
+</div>
+
+<div id="appScreen" class="app-hidden wrap">
+  <h1>📞 Buscador de Telefonos</h1>
+  <div class="search-box">
+    <div class="search-row">
+      <div class="search-input-wrap">
+        <input type="text" id="searchInput" placeholder="Buscar..." autocomplete="off" disabled>
+        <button type="button" class="clear-btn" id="clearBtn" aria-label="Borrar búsqueda">✕</button>
+      </div>
+      <select id="delegacionFilter" disabled>
+        <option value="">Todas las delegaciones</option>
+      </select>
+    </div>
+    <div class="count">
+      <span id="countLabel"></span>
+      <span>
+        <button class="refresh-btn" id="refreshBtn">🔄 Actualizar datos</button>
+        &nbsp;·&nbsp;
+        <button class="logout-btn" id="logoutBtn">Cerrar sesión</button>
+      </span>
+    </div>
+  </div>
+  <div id="results"><div class="status"><div class="spinner"></div>Cargando datos...</div></div>
+</div>
+</div>
+
+<script>
+const CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQvmvyJZO7Qv0NXMm60mDlP95bejhqnMbYdNsuCprwzkSUw8jSLbzOdm4NMLphF8w/pub?gid=1764237414&single=true&output=csv";
+
+// Hash SHA-256 de la contraseña (la contraseña real no aparece en el código)
+const PASSWORD_HASH = "7d84a506e1aaca30133871a096b1f0dfe7b2a0047a269f05de05f2b12c34e0a1";
+const SESSION_KEY = "buscador_tel_auth";
+
+const loginScreen = document.getElementById('loginScreen');
+const appScreen = document.getElementById('appScreen');
+const passwordInput = document.getElementById('passwordInput');
+const loginBtn = document.getElementById('loginBtn');
+const loginError = document.getElementById('loginError');
+const logoutBtn = document.getElementById('logoutBtn');
+
+async function sha256(text) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map(function(b) { return b.toString(16).padStart(2, '0'); }).join('');
+}
+
+async function tryLogin() {
+  const value = passwordInput.value;
+  const hash = await sha256(value);
+  if (hash === PASSWORD_HASH) {
+    sessionStorage.setItem(SESSION_KEY, hash);
+    showApp();
+  } else {
+    loginError.textContent = 'Contraseña incorrecta';
+    passwordInput.value = '';
+    passwordInput.focus();
+  }
+}
+
+function showApp() {
+  loginScreen.classList.add('app-hidden');
+  appScreen.classList.remove('app-hidden');
+  loadData();
+}
+
+function showLogin() {
+  appScreen.classList.add('app-hidden');
+  loginScreen.classList.remove('app-hidden');
+  passwordInput.value = '';
+  loginError.textContent = '';
+  setTimeout(function() { passwordInput.focus(); }, 50);
+}
+
+loginBtn.addEventListener('click', tryLogin);
+passwordInput.addEventListener('keydown', function(e) {
+  if (e.key === 'Enter') tryLogin();
+});
+logoutBtn.addEventListener('click', function() {
+  sessionStorage.removeItem(SESSION_KEY);
+  showLogin();
+});
+
+// Si ya habia sesion valida en este navegador (misma pestaña/sesion), entra directo
+if (sessionStorage.getItem(SESSION_KEY) === PASSWORD_HASH) {
+  showApp();
+} else {
+  setTimeout(function() { passwordInput.focus(); }, 50);
+}
+
+let data = [];
+const resultsEl = document.getElementById('results');
+const searchInput = document.getElementById('searchInput');
+const countLabel = document.getElementById('countLabel');
+const refreshBtn = document.getElementById('refreshBtn');
+const delegacionFilter = document.getElementById('delegacionFilter');
+const clearBtn = document.getElementById('clearBtn');
+
+function normalize(str) {
+  return (str || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function cleanVal(v) {
+  if (v === undefined || v === null) return '';
+  let s = v.toString().trim();
+  if (s === '-' || s === '0') return '';
+  return s;
+}
+
+// Parser CSV sencillo (soporta comillas)
+function parseCSV(text) {
+  const rows = [];
+  let row = [], field = '', inQuotes = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQuotes) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQuotes = false;
+      } else field += c;
+    } else {
+      if (c === '"') inQuotes = true;
+      else if (c === ',') { row.push(field); field = ''; }
+      else if (c === '\n' || c === '\r') {
+        if (c === '\r' && text[i + 1] === '\n') i++;
+        row.push(field); field = '';
+        if (row.length > 1 || row[0] !== '') rows.push(row);
+        row = [];
+      } else field += c;
+    }
+  }
+  if (field !== '' || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+async function fetchCSVText() {
+  const urlWithBuster = CSV_URL + '&t=' + Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(function() { controller.abort(); }, 10000);
+  try {
+    const resp = await fetch(urlWithBuster, { signal: controller.signal });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    return await resp.text();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function loadData() {
+  resultsEl.innerHTML = '<div class="status"><div class="spinner"></div>Cargando datos...</div>';
+  searchInput.disabled = true;
+  try {
+    const text = await fetchCSVText();
+    const rows = parseCSV(text);
+    rows.shift(); // quitar cabecera
+
+    const seen = new Set();
+    data = [];
+    for (const r of rows) {
+      const usuario = cleanVal(r[0]);
+      if (!usuario) continue;
+      const movil = cleanVal(r[1]);
+      const key = usuario + '|' + movil;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      data.push({
+        usuario: usuario,
+        movil: movil,
+        ext_movil: cleanVal(r[2]),
+        delegacion: cleanVal(r[3]),
+        ext_delegacion: cleanVal(r[4])
+      });
+    }
+    searchInput.disabled = false;
+    populateDelegacionFilter();
+    delegacionFilter.disabled = false;
+    applyFilters();
+  } catch (err) {
+    const isLocalFile = window.location.protocol === 'file:';
+    let hint = isLocalFile
+      ? 'Estás abriendo este archivo directamente desde tu ordenador. Para que funcione, súbelo a un hosting gratuito (por ejemplo netlify.com/drop) y ábrelo desde esa URL.'
+      : 'Comprueba tu conexión a internet y que la hoja siga publicada en Google Sheets.';
+    resultsEl.innerHTML = '<div class="status error">No se pudieron cargar los datos.<br><small>' + err.message + '</small><br><br>' + hint + '</div>';
+  }
+}
+
+function highlight(text, query) {
+  if (!query || !text) return text || '';
+  const normText = normalize(text);
+  const normQuery = normalize(query);
+  const idx = normText.indexOf(normQuery);
+  if (idx === -1) return text;
+  return text.slice(0, idx) + '<mark>' + text.slice(idx, idx + query.length) + '</mark>' + text.slice(idx + query.length);
+}
+
+function render(list, query) {
+  if (list.length === 0) {
+    resultsEl.innerHTML = '<div class="empty">No se encontraron resultados</div>';
+    countLabel.textContent = '';
+    return;
+  }
+  countLabel.textContent = list.length + ' de ' + data.length + ' contactos';
+  resultsEl.innerHTML = list.map(function(p) {
+    const fields = [];
+    if (p.delegacion) {
+      fields.push('<div class="field delegacion"><span class="field-label">Delegación</span><span class="field-value">' + highlight(p.delegacion, query) + '</span></div>');
+    }
+    if (p.ext_delegacion) {
+      fields.push('<div class="field ext-deleg"><span class="field-label">Ext. Delegación</span><span class="field-value">' + highlight(p.ext_delegacion, query) + '</span></div>');
+    }
+    const fieldsHtml = fields.length ? '<div class="field-row">' + fields.join('') + '</div>' : '';
+
+    const phoneHtml = p.movil
+      ? '<span class="phone-value">' + highlight(p.movil, query) + '</span>'
+      : '';
+    const extHtml = p.ext_movil
+      ? '<span class="ext-value">' + highlight(p.ext_movil, query) + '</span>'
+      : '';
+
+    return '<div class="card"><div class="info"><div class="name">' + highlight(p.usuario, query) +
+      '</div>' + fieldsHtml + '</div><div class="phones">' + phoneHtml + extHtml + '</div></div>';
+  }).join('');
+}
+
+function populateDelegacionFilter() {
+  const current = delegacionFilter.value;
+  const delegaciones = Array.from(new Set(
+    data.map(function(p) { return p.delegacion; }).filter(Boolean)
+  )).sort(function(a, b) { return a.localeCompare(b, 'es'); });
+
+  delegacionFilter.innerHTML = '<option value="">Todas las delegaciones</option>' +
+    delegaciones.map(function(d) {
+      return '<option value="' + d.replace(/"/g, '&quot;') + '">' + d + '</option>';
+    }).join('');
+
+  if (delegaciones.includes(current)) delegacionFilter.value = current;
+}
+
+function search(query) {
+  const q = normalize(query.trim());
+  if (!q) return data;
+  return data.filter(function(p) {
+    return normalize(p.usuario).includes(q) || normalize(p.movil).includes(q) ||
+           normalize(p.ext_movil).includes(q) || normalize(p.delegacion).includes(q) ||
+           normalize(p.ext_delegacion).includes(q);
+  });
+}
+
+function applyFilters() {
+  const query = searchInput.value.trim();
+  clearBtn.classList.toggle('visible', searchInput.value.length > 0);
+  const delegacion = delegacionFilter.value;
+  let list = search(query);
+  if (delegacion) {
+    list = list.filter(function(p) { return p.delegacion === delegacion; });
+  }
+  render(list, query);
+}
+
+searchInput.addEventListener('input', applyFilters);
+delegacionFilter.addEventListener('change', applyFilters);
+clearBtn.addEventListener('click', function() {
+  searchInput.value = '';
+  searchInput.focus();
+  applyFilters();
+});
+refreshBtn.addEventListener('click', loadData);
+</script>
+</body>
+</html>
