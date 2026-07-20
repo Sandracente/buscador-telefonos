@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%93%9E</text></svg>">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%22.9em%22%20font-size%3D%2290%22%3E%F0%9F%93%9E%3C%2Ftext%3E%3C%2Fsvg%3E">
 <title>Buscador de Telefonos</title>
 <style>
   :root {
@@ -25,6 +25,10 @@
   .wrap { max-width: 900px; margin: 0 auto; }
   h1 { font-size: 1.5rem; margin: 0 0 4px; text-align: center; }
   .subtitle { text-align: center; color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+  .last-update {
+    text-align: center; color: var(--muted); font-size: 0.78rem;
+    margin: -12px 0 18px; opacity: 0.85;
+  }
   .search-box { position: sticky; top: 0; background: var(--bg); padding: 8px 0 16px; z-index: 10; }
   .search-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .search-input-wrap { position: relative; flex: 1; min-width: 150px; }
@@ -140,6 +144,7 @@
 
 <div id="appScreen" class="app-hidden wrap">
   <h1>📞 Buscador de Telefonos</h1>
+  <div class="last-update" id="lastUpdate"></div>
   <div class="search-box">
     <div class="search-row">
       <div class="search-input-wrap">
@@ -232,6 +237,7 @@ const countLabel = document.getElementById('countLabel');
 const refreshBtn = document.getElementById('refreshBtn');
 const delegacionFilter = document.getElementById('delegacionFilter');
 const clearBtn = document.getElementById('clearBtn');
+const lastUpdateEl = document.getElementById('lastUpdate');
 
 function normalize(str) {
   return (str || '').toString().toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -289,7 +295,9 @@ async function loadData() {
   try {
     const text = await fetchCSVText();
     const rows = parseCSV(text);
-    rows.shift(); // quitar cabecera
+    const headerRow = rows.shift() || []; // quitar cabecera, pero guardarla
+    const updateDate = cleanVal(headerRow[5]); // columna F de la cabecera = fecha de actualizacion
+    lastUpdateEl.textContent = updateDate ? ('Última actualización: ' + updateDate) : '';
 
     const seen = new Set();
     data = [];
