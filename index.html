@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%22.9em%22%20font-size%3D%2290%22%3E%F0%9F%93%9E%3C%2Ftext%3E%3C%2Fsvg%3E">
-<title>Buscador de Telefonos</title>
+<title>Buscador de Teléfonos</title>
 <style>
   :root {
     --bg: #0f172a;
@@ -146,7 +146,7 @@
 </div>
 
 <div id="appScreen" class="app-hidden wrap">
-  <h1>📞 Buscador de Telefonos</h1>
+  <h1>📞 Buscador de Teléfonos</h1>
   <div class="last-update" id="lastUpdate"></div>
   <div class="search-box">
     <div class="search-row">
@@ -171,7 +171,6 @@
     </div>
   </div>
   <div id="results"><div class="status"><div class="spinner"></div>Cargando datos...</div></div>
-</div>
 </div>
 
 <script>
@@ -276,6 +275,48 @@ function parseCSV(text) {
   return rows;
 }
 
+// Correspondencia actual: A Usuario, B Móvil, C Ext, D Delegación,
+// E Dpto, F Fijo, G fecha de actualización en la cabecera, H Fecha (oculta).
+// Reconocer las cabeceras evita desplazar los datos si cambia su orden.
+function getContactColumns(headerRow) {
+  const heads = headerRow.map(function(h) {
+    return normalize(h).trim().replace(/[.\s_]+/g, ' ');
+  });
+  const aliases = {
+    usuario: ['usuario'],
+    movil: ['movil', 'telefono movil', 'telefono'],
+    ext_movil: ['ext', 'ext movil', 'extension movil'],
+    delegacion: ['delegacion'],
+    dpto: ['dpto', 'departamento'],
+    fijo: ['fijo', 'telefono fijo', 'ext delegacion', 'extension delegacion']
+  };
+  const col = {};
+  Object.keys(aliases).forEach(function(key) {
+    col[key] = heads.findIndex(function(h) { return aliases[key].includes(h); });
+    if (col[key] < 0) {
+      throw new Error('Falta la columna ' + aliases[key][0].toUpperCase() + ' en la hoja publicada.');
+    }
+  });
+  return col;
+}
+
+function getUpdateDate(headerRow) {
+  const value = (headerRow[6] || '').trim(); // G, índice 6 (se empieza a contar en 0)
+  // Mostrar solo una fecha; si G contiene un título o está vacía, ocultar el texto.
+  const match = /^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})$/.exec(value);
+  if (!match) return '';
+  const day = Number(match[1]), month = Number(match[2]), year = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day
+    ? value : '';
+}
+
+function escapeHTML(value) {
+  return String(value == null ? '' : value).replace(/[&<>"']/g, function(c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+
 async function fetchCSVText() {
   const urlWithBuster = CSV_URL + '&t=' + Date.now();
   const controller = new AbortController();
@@ -292,30 +333,21 @@ async function fetchCSVText() {
 async function loadData() {
   resultsEl.innerHTML = '<div class="status"><div class="spinner"></div>Cargando datos...</div>';
   searchInput.disabled = true;
+  delegacionFilter.disabled = true;
+  dptoFilter.disabled = true;
+  refreshBtn.disabled = true;
+  lastUpdateEl.textContent = '';
+  countLabel.textContent = '';
   try {
     const text = await fetchCSVText();
     const rows = parseCSV(text);
     const headerRow = rows.shift() || []; // quitar cabecera, pero guardarla
 
-    // Localiza cada columna por el nombre de su cabecera (si no la encuentra, usa la posicion por defecto)
-    const heads = headerRow.map(function(h) { return normalize(h).trim(); });
-    function findCol(test, fallback) {
-      const i = heads.findIndex(test);
-      return i >= 0 ? i : fallback;
-    }
-    const col = {
-      usuario: findCol(function(h) { return h.startsWith('usuario'); }, 0),
-      movil: findCol(function(h) { return h.includes('telefono') || (h.includes('movil') && !h.startsWith('ext')); }, 1),
-      ext_movil: findCol(function(h) { return h === 'ext' || (h.startsWith('ext') && h.includes('movil')); }, 2),
-      delegacion: findCol(function(h) { return h === 'delegacion'; }, 3),
-      dpto: findCol(function(h) { return h.startsWith('dpto') || h.startsWith('departamento'); }, 4),
-      fijo: findCol(function(h) { return h === 'fijo' || h.startsWith('fijo') || (h.startsWith('ext') && h.includes('deleg')); }, 5)
-    };
+    const col = getContactColumns(headerRow);
 
-    // Fecha de ultima actualizacion = la cabecera que tiene forma de fecha (p. ej. 22/10/2026)
-    const dateRe = /^\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}$/;
-    const updateDate = (headerRow.map(function(h) { return (h || '').trim(); })
-      .find(function(h) { return dateRe.test(h); })) || '';
+    // G contiene la fecha en su CABECERA. H (Fecha) no se muestra ni se busca.
+    // Nunca utilizar F: es el teléfono fijo.
+    const updateDate = getUpdateDate(headerRow);
     lastUpdateEl.textContent = updateDate ? ('Última actualización: ' + updateDate) : '';
 
     const seen = new Set();
@@ -347,17 +379,19 @@ async function loadData() {
     let hint = isLocalFile
       ? 'Estás abriendo este archivo directamente desde tu ordenador. Para que funcione, súbelo a un hosting gratuito (por ejemplo netlify.com/drop) y ábrelo desde esa URL.'
       : 'Comprueba tu conexión a internet y que la hoja siga publicada en Google Sheets.';
-    resultsEl.innerHTML = '<div class="status error">No se pudieron cargar los datos.<br><small>' + err.message + '</small><br><br>' + hint + '</div>';
+    resultsEl.innerHTML = '<div class="status error">No se pudieron cargar los datos.<br><small>' + escapeHTML(err.message) + '</small><br><br>' + hint + '</div>';
+  } finally {
+    refreshBtn.disabled = false;
   }
 }
 
 function highlight(text, query) {
-  if (!query || !text) return text || '';
+  if (!query || !text) return escapeHTML(text);
   const normText = normalize(text);
   const normQuery = normalize(query);
   const idx = normText.indexOf(normQuery);
-  if (idx === -1) return text;
-  return text.slice(0, idx) + '<mark>' + text.slice(idx, idx + query.length) + '</mark>' + text.slice(idx + query.length);
+  if (idx === -1) return escapeHTML(text);
+  return escapeHTML(text.slice(0, idx)) + '<mark>' + escapeHTML(text.slice(idx, idx + query.length)) + '</mark>' + escapeHTML(text.slice(idx + query.length));
 }
 
 function render(list, query) {
@@ -378,14 +412,14 @@ function render(list, query) {
     const fieldsHtml = fields.length ? '<div class="field-row">' + fields.join('') + '</div>' : '';
 
     const phoneHtml = p.movil
-      ? '<span class="phone-value">' + highlight(p.movil, query) + '</span>'
+      ? '<span class="phone-value" title="Móvil">' + highlight(p.movil, query) + '</span>'
       : '';
     const extHtml = p.ext_movil
-      ? '<span class="ext-value">' + highlight(p.ext_movil, query) + '</span>'
+      ? '<span class="ext-value" title="Extensión móvil">' + highlight(p.ext_movil, query) + '</span>'
       : '';
 
     const fijoHtml = p.fijo
-      ? '<span class="fijo-value">' + highlight(p.fijo, query) + '</span>'
+      ? '<span class="fijo-value" title="Fijo">' + highlight(p.fijo, query) + '</span>'
       : '';
 
     return '<div class="card"><div class="info"><div class="name">' + highlight(p.usuario, query) +
@@ -401,7 +435,7 @@ function populateDelegacionFilter() {
 
   delegacionFilter.innerHTML = '<option value="">Todas las delegaciones</option>' +
     delegaciones.map(function(d) {
-      return '<option value="' + d.replace(/"/g, '&quot;') + '">' + d + '</option>';
+      return '<option value="' + escapeHTML(d) + '">' + escapeHTML(d) + '</option>';
     }).join('');
 
   if (delegaciones.includes(current)) delegacionFilter.value = current;
@@ -415,7 +449,7 @@ function populateDptoFilter() {
 
   dptoFilter.innerHTML = '<option value="">Todos los departamentos</option>' +
     dptos.map(function(d) {
-      return '<option value="' + d.replace(/"/g, '&quot;') + '">' + d + '</option>';
+      return '<option value="' + escapeHTML(d) + '">' + escapeHTML(d) + '</option>';
     }).join('');
 
   if (dptos.includes(current)) dptoFilter.value = current;
