@@ -45,12 +45,12 @@
   }
   .clear-btn:hover { background: #475569; }
   .clear-btn.visible { display: flex; }
-  select#delegacionFilter {
+  select.filter-select {
     padding: 14px 12px; font-size: 0.95rem; border-radius: 12px;
     border: 1px solid var(--border); background: var(--card); color: var(--text); outline: none;
     max-width: 100%; flex: 1; min-width: 150px;
   }
-  select#delegacionFilter:focus { border-color: var(--accent); }
+  select.filter-select:focus { border-color: var(--accent); }
   input[type="text"]:focus { border-color: var(--accent); }
   input[type="text"]:disabled { opacity: 0.5; }
   .count { color: var(--muted); font-size: 0.85rem; margin: 6px 4px 0; display: flex; justify-content: space-between; }
@@ -78,6 +78,8 @@
   .field-value { font-size: 0.9rem; color: var(--text); white-space: nowrap; }
   .field.delegacion { border-color: #3b5a7a; background: rgba(56,189,248,0.06); }
   .field.delegacion .field-label { color: #38bdf8; }
+  .field.dpto { border-color: #2f6f5e; background: rgba(52,211,153,0.07); }
+  .field.dpto .field-label { color: #34d399; }
   .field.ext-deleg { border-color: #6b5aad; background: rgba(167,139,250,0.08); }
   .field.ext-deleg .field-label { color: #a78bfa; }
   .phones {
@@ -151,8 +153,11 @@
         <input type="text" id="searchInput" placeholder="Buscar..." autocomplete="off" disabled>
         <button type="button" class="clear-btn" id="clearBtn" aria-label="Borrar búsqueda">✕</button>
       </div>
-      <select id="delegacionFilter" disabled>
+      <select id="delegacionFilter" class="filter-select" disabled>
         <option value="">Todas las delegaciones</option>
+      </select>
+      <select id="dptoFilter" class="filter-select" disabled>
+        <option value="">Todos los departamentos</option>
       </select>
     </div>
     <div class="count">
@@ -223,19 +228,13 @@ logoutBtn.addEventListener('click', function() {
   showLogin();
 });
 
-// Si ya habia sesion valida en este navegador (misma pestaña/sesion), entra directo
-if (sessionStorage.getItem(SESSION_KEY) === PASSWORD_HASH) {
-  showApp();
-} else {
-  setTimeout(function() { passwordInput.focus(); }, 50);
-}
-
 let data = [];
 const resultsEl = document.getElementById('results');
 const searchInput = document.getElementById('searchInput');
 const countLabel = document.getElementById('countLabel');
 const refreshBtn = document.getElementById('refreshBtn');
 const delegacionFilter = document.getElementById('delegacionFilter');
+const dptoFilter = document.getElementById('dptoFilter');
 const clearBtn = document.getElementById('clearBtn');
 const lastUpdateEl = document.getElementById('lastUpdate');
 
@@ -296,29 +295,51 @@ async function loadData() {
     const text = await fetchCSVText();
     const rows = parseCSV(text);
     const headerRow = rows.shift() || []; // quitar cabecera, pero guardarla
-    const updateDate = cleanVal(headerRow[5]); // columna F de la cabecera = fecha de actualizacion
+
+    // Localiza cada columna por el nombre de su cabecera (si no la encuentra, usa la posicion por defecto)
+    const heads = headerRow.map(function(h) { return normalize(h).trim(); });
+    function findCol(test, fallback) {
+      const i = heads.findIndex(test);
+      return i >= 0 ? i : fallback;
+    }
+    const col = {
+      usuario: findCol(function(h) { return h.startsWith('usuario'); }, 0),
+      movil: findCol(function(h) { return h.includes('telefono') || (h.includes('movil') && !h.startsWith('ext')); }, 1),
+      ext_movil: findCol(function(h) { return h === 'ext' || (h.startsWith('ext') && h.includes('movil')); }, 2),
+      delegacion: findCol(function(h) { return h === 'delegacion'; }, 3),
+      dpto: findCol(function(h) { return h.startsWith('dpto') || h.startsWith('departamento'); }, 4),
+      fijo: findCol(function(h) { return h === 'fijo' || h.startsWith('fijo') || (h.startsWith('ext') && h.includes('deleg')); }, 5)
+    };
+
+    // Fecha de ultima actualizacion = la cabecera que tiene forma de fecha (p. ej. 22/10/2026)
+    const dateRe = /^\d{1,4}[\/\-.]\d{1,2}[\/\-.]\d{1,4}$/;
+    const updateDate = (headerRow.map(function(h) { return (h || '').trim(); })
+      .find(function(h) { return dateRe.test(h); })) || '';
     lastUpdateEl.textContent = updateDate ? ('Última actualización: ' + updateDate) : '';
 
     const seen = new Set();
     data = [];
     for (const r of rows) {
-      const usuario = cleanVal(r[0]);
+      const usuario = cleanVal(r[col.usuario]);
       if (!usuario) continue;
-      const movil = cleanVal(r[1]);
+      const movil = cleanVal(r[col.movil]);
       const key = usuario + '|' + movil;
       if (seen.has(key)) continue;
       seen.add(key);
       data.push({
         usuario: usuario,
         movil: movil,
-        ext_movil: cleanVal(r[2]),
-        delegacion: cleanVal(r[3]),
-        ext_delegacion: cleanVal(r[4])
+        ext_movil: cleanVal(r[col.ext_movil]),
+        delegacion: cleanVal(r[col.delegacion]),
+        dpto: cleanVal(r[col.dpto]),
+        fijo: cleanVal(r[col.fijo])
       });
     }
     searchInput.disabled = false;
     populateDelegacionFilter();
+    populateDptoFilter();
     delegacionFilter.disabled = false;
+    dptoFilter.disabled = false;
     applyFilters();
   } catch (err) {
     const isLocalFile = window.location.protocol === 'file:';
@@ -350,8 +371,11 @@ function render(list, query) {
     if (p.delegacion) {
       fields.push('<div class="field delegacion"><span class="field-label">Delegación</span><span class="field-value">' + highlight(p.delegacion, query) + '</span></div>');
     }
-    if (p.ext_delegacion) {
-      fields.push('<div class="field ext-deleg"><span class="field-label">Ext. Delegación</span><span class="field-value">' + highlight(p.ext_delegacion, query) + '</span></div>');
+    if (p.dpto) {
+      fields.push('<div class="field dpto"><span class="field-label">Dpto</span><span class="field-value">' + highlight(p.dpto, query) + '</span></div>');
+    }
+    if (p.fijo) {
+      fields.push('<div class="field ext-deleg"><span class="field-label">Fijo</span><span class="field-value">' + highlight(p.fijo, query) + '</span></div>');
     }
     const fieldsHtml = fields.length ? '<div class="field-row">' + fields.join('') + '</div>' : '';
 
@@ -381,13 +405,27 @@ function populateDelegacionFilter() {
   if (delegaciones.includes(current)) delegacionFilter.value = current;
 }
 
+function populateDptoFilter() {
+  const current = dptoFilter.value;
+  const dptos = Array.from(new Set(
+    data.map(function(p) { return p.dpto; }).filter(Boolean)
+  )).sort(function(a, b) { return a.localeCompare(b, 'es'); });
+
+  dptoFilter.innerHTML = '<option value="">Todos los departamentos</option>' +
+    dptos.map(function(d) {
+      return '<option value="' + d.replace(/"/g, '&quot;') + '">' + d + '</option>';
+    }).join('');
+
+  if (dptos.includes(current)) dptoFilter.value = current;
+}
+
 function search(query) {
   const q = normalize(query.trim());
   if (!q) return data;
   return data.filter(function(p) {
     return normalize(p.usuario).includes(q) || normalize(p.movil).includes(q) ||
            normalize(p.ext_movil).includes(q) || normalize(p.delegacion).includes(q) ||
-           normalize(p.ext_delegacion).includes(q);
+           normalize(p.dpto).includes(q) || normalize(p.fijo).includes(q);
   });
 }
 
@@ -399,17 +437,29 @@ function applyFilters() {
   if (delegacion) {
     list = list.filter(function(p) { return p.delegacion === delegacion; });
   }
+  const dpto = dptoFilter.value;
+  if (dpto) {
+    list = list.filter(function(p) { return p.dpto === dpto; });
+  }
   render(list, query);
 }
 
 searchInput.addEventListener('input', applyFilters);
 delegacionFilter.addEventListener('change', applyFilters);
+dptoFilter.addEventListener('change', applyFilters);
 clearBtn.addEventListener('click', function() {
   searchInput.value = '';
   searchInput.focus();
   applyFilters();
 });
 refreshBtn.addEventListener('click', loadData);
+
+// Si ya habia sesion valida en este navegador (misma pestaña/sesion), entra directo
+if (sessionStorage.getItem(SESSION_KEY) === PASSWORD_HASH) {
+  showApp();
+} else {
+  setTimeout(function() { passwordInput.focus(); }, 50);
+}
 </script>
 </body>
 </html>
